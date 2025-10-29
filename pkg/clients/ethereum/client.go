@@ -306,7 +306,7 @@ func (c *EthereumClient) batchCall(ctx context.Context, requests []*RPCRequest) 
 	}
 	requestBody, err := json.Marshal(requests)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to marshal requests: %s", err)
+		return nil, fmt.Errorf("failed to marshal requests: %s", err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, time.Second*20)
@@ -314,7 +314,7 @@ func (c *EthereumClient) batchCall(ctx context.Context, requests []*RPCRequest) 
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.clientConfig.BaseUrl, bytes.NewReader(requestBody))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to make request: %s", err)
+		return nil, fmt.Errorf("failed to make request: %s", err)
 	}
 
 	request.Header.Set("Content-Type", "application/json")
@@ -322,12 +322,12 @@ func (c *EthereumClient) batchCall(ctx context.Context, requests []*RPCRequest) 
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("Request failed %v", err)
+		return nil, fmt.Errorf("request failed %v", err)
 	}
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read body %v", err)
+		return nil, fmt.Errorf("failed to read body %v", err)
 	}
 
 	if response.StatusCode != http.StatusOK {
@@ -341,11 +341,11 @@ func (c *EthereumClient) batchCall(ctx context.Context, requests []*RPCRequest) 
 		if err := json.Unmarshal(responseBody, &errorResponse); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal error response: %s", err)
 		}
-		c.Logger.Sugar().Debugw("Error payload returned from batch call",
+		c.Logger.Sugar().Debugw("error payload returned from batch call",
 			zap.String("error", string(responseBody)),
 		)
 		if errorResponse.Error.Message != "empty batch" {
-			return nil, fmt.Errorf("Error payload returned from batch call: %s", string(responseBody))
+			return nil, fmt.Errorf("error payload returned from batch call: %s", string(responseBody))
 		}
 	} else {
 		if err := json.Unmarshal(responseBody, &destination); err != nil {
@@ -356,7 +356,10 @@ func (c *EthereumClient) batchCall(ctx context.Context, requests []*RPCRequest) 
 			return nil, fmt.Errorf("failed to unmarshal response: %s", err)
 		}
 	}
-	response.Body.Close()
+	err = response.Body.Close()
+	if err != nil {
+		return nil, err
+	}
 
 	return destination, nil
 }
@@ -368,7 +371,7 @@ const (
 //nolint:unused
 func (c *EthereumClient) chunkedNativeBatchCall(ctx context.Context, requests []*RPCRequest) ([]*RPCResponse, error) {
 	if len(requests) == 0 {
-		c.Logger.Sugar().Warnw("No requests to batch call")
+		c.Logger.Sugar().Warnw("no requests to batch call")
 		return make([]*RPCResponse, 0), nil
 	}
 	batches := [][]*RPCRequest{}
@@ -385,7 +388,7 @@ func (c *EthereumClient) chunkedNativeBatchCall(ctx context.Context, requests []
 			break
 		}
 	}
-	c.Logger.Sugar().Debugw(fmt.Sprintf("Batching '%v' requests into '%v' batches", len(requests), len(batches)))
+	c.Logger.Sugar().Debugw(fmt.Sprintf("batching '%v' requests into '%v' batches", len(requests), len(batches)))
 
 	resultsChan := make(chan []*RPCResponse, len(requests))
 	wg := sync.WaitGroup{}
@@ -418,7 +421,7 @@ func (c *EthereumClient) chunkedNativeBatchCall(ctx context.Context, requests []
 		return int(*i.ID - *j.ID)
 	})
 
-	c.Logger.Sugar().Debugw(fmt.Sprintf("Received '%d' results", len(results)))
+	c.Logger.Sugar().Debugw(fmt.Sprintf("received '%d' results", len(results)))
 	return results, nil
 }
 
@@ -443,7 +446,7 @@ const (
 // This function allows for better retry and error handling over the batch call method.
 func (c *EthereumClient) chunkedBatchCall(ctx context.Context, requests []*RPCRequest) ([]*RPCResponse, error) {
 	if len(requests) == 0 {
-		c.Logger.Sugar().Warnw("No requests to batch call")
+		c.Logger.Sugar().Warnw("no requests to batch call")
 		return make([]*RPCResponse, 0), nil
 	}
 	batches := [][]*IndexedRpcRequestResponse{}
@@ -469,7 +472,7 @@ func (c *EthereumClient) chunkedBatchCall(ctx context.Context, requests []*RPCRe
 			break
 		}
 	}
-	c.Logger.Sugar().Debugw(fmt.Sprintf("Batching '%v' requests into '%v' batches", len(requests), len(batches)))
+	c.Logger.Sugar().Debugw(fmt.Sprintf("batching '%v' requests into '%v' batches", len(requests), len(batches)))
 
 	// iterate over batches
 	for i, batch := range batches {
@@ -523,14 +526,14 @@ func (c *EthereumClient) chunkedBatchCall(ctx context.Context, requests []*RPCRe
 	}
 
 	if len(allResults) != len(requests) {
-		return nil, fmt.Errorf("Failed to fetch results for all requests. Expected %d, got %d", len(requests), len(allResults))
+		return nil, fmt.Errorf("failed to fetch results for all requests. Expected %d, got %d", len(requests), len(allResults))
 	}
 	return allResults, nil
 }
 
 func (c *EthereumClient) BatchCall(ctx context.Context, requests []*RPCRequest) ([]*RPCResponse, error) {
 	if len(requests) == 0 {
-		c.Logger.Sugar().Warnw("No requests to batch call")
+		c.Logger.Sugar().Warnw("no requests to batch call")
 		return make([]*RPCResponse, 0), nil
 	}
 	// if c.clientConfig.UseNativeBatchCall {
@@ -550,7 +553,7 @@ func (c *EthereumClient) call(ctx context.Context, rpcRequest *RPCRequest) (*RPC
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.clientConfig.BaseUrl, bytes.NewReader(requestBody))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to make request %s", err)
+		return nil, fmt.Errorf("failed to make request %s", err)
 	}
 
 	request.Header.Set("Content-Type", "application/json")
@@ -558,12 +561,12 @@ func (c *EthereumClient) call(ctx context.Context, rpcRequest *RPCRequest) (*RPC
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("Request failed %s", err)
+		return nil, fmt.Errorf("request failed %s", err)
 	}
 
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to read body %s", err)
+		return nil, fmt.Errorf("failed to read body %s", err)
 	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("received http error code %+v", response.StatusCode)
@@ -578,7 +581,10 @@ func (c *EthereumClient) call(ctx context.Context, rpcRequest *RPCRequest) (*RPC
 		return nil, fmt.Errorf("received error response: %+v", destination.Error)
 	}
 
-	response.Body.Close()
+	err = response.Body.Close()
+	if err != nil {
+		return nil, err
+	}
 
 	return destination, nil
 }
@@ -590,20 +596,20 @@ func (c *EthereumClient) Call(ctx context.Context, rpcRequest *RPCRequest) (*RPC
 		res, err := c.call(ctx, rpcRequest)
 		if err == nil {
 			if i > 0 {
-				c.Logger.Sugar().Infow("Successfully called after backoff",
+				c.Logger.Sugar().Infow("successfully called after backoff",
 					zap.Int("backoffSecs", backoff),
 					zap.Any("rpcRequest", rpcRequest),
 				)
 			}
 			return res, nil
 		}
-		c.Logger.Sugar().Errorw("Failed to call",
+		c.Logger.Sugar().Errorw("failed to call",
 			zap.Error(err),
 			zap.Int("backoffSecs", backoff),
 			zap.Any("rpcRequest", rpcRequest),
 		)
 		time.Sleep(time.Second * time.Duration(backoff))
 	}
-	c.Logger.Sugar().Errorw("Exceeded retries for Call", zap.Any("rpcRequest", rpcRequest))
-	return nil, fmt.Errorf("Exceeded retries for Call")
+	c.Logger.Sugar().Errorw("exceeded retries for Call", zap.Any("rpcRequest", rpcRequest))
+	return nil, fmt.Errorf("exceeded retries for Call")
 }

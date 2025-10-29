@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/Layr-Labs/chain-indexer/pkg/config"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
@@ -17,8 +18,6 @@ type (
 	EthereumBigFloat    big.Float
 )
 
-type ChainId uint
-
 type (
 	EthereumBlock struct {
 		Hash         EthereumHexString      `json:"hash" validate:"required"`
@@ -27,7 +26,7 @@ type (
 		Timestamp    EthereumQuantity       `json:"timestamp" validate:"required_with=Number"`
 		Transactions []*EthereumTransaction `json:"transactions"`
 		Nonce        EthereumHexString      `json:"nonce"`
-		ChainId      ChainId
+		ChainId      config.ChainId
 	}
 
 	EthereumTransactionAccess struct {

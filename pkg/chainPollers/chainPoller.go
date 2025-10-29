@@ -27,9 +27,17 @@ type BlockRecord struct {
 }
 
 type IChainPollerPersistence interface {
-	GetLastProcessedBlock(ctx context.Context, avsAddress string, chainId config.ChainId) (*BlockRecord, error)
+	GetLastProcessedBlock(ctx context.Context, chainId config.ChainId) (*BlockRecord, error)
 
-	SaveBlock(ctx context.Context, avsAddress string, block *BlockRecord) error
-	GetBlock(ctx context.Context, avsAddress string, chainId config.ChainId, blockNumber uint64) (*BlockRecord, error)
-	DeleteBlock(ctx context.Context, avsAddress string, chainId config.ChainId, blockNumber uint64) error
+	SaveBlock(ctx context.Context, block *BlockRecord) error
+	GetBlock(ctx context.Context, chainId config.ChainId, blockNumber uint64) (*BlockRecord, error)
+	DeleteBlock(ctx context.Context, chainId config.ChainId, blockNumber uint64) error
+
+	Close() error
+}
+
+type IBlockHandler interface {
+	HandleBlock(ctx context.Context, block *ethereum.EthereumBlock) error
+	HandleLog(ctx context.Context, logWithBlock *LogWithBlock) error
+	HandleReorgBlock(ctx context.Context, blockNumber uint64)
 }
