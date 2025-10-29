@@ -1,0 +1,17 @@
+all: false
+dir: 'pkg/mocks'
+filename: 'mock_{{.InterfaceName}}.go'  # Better naming than mocks_test.go
+force-file-write: true
+formatter: goimports
+include-auto-generated: false
+log-level: info
+structname: '{{.Mock}}{{.InterfaceName}}'
+pkgname: 'mocks'
+recursive: true
+require-template-schema-exists: true
+template: testify
+template-schema: '{{.Template}}.schema.json'
+packages:
+  github.com/Layr-Labs/chain-indexer/pkg: 
+    config:
+      all: true
