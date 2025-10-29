@@ -21,8 +21,9 @@ import (
 type BlockType string
 
 const (
-	BlockType_Safe   BlockType = "safe"
-	BlockType_Latest BlockType = "latest"
+	BlockType_Safe      BlockType = "safe"
+	BlockType_Latest    BlockType = "latest"
+	BlockType_Finalized BlockType = "finalized"
 )
 
 type RequestMethod struct {
@@ -182,12 +183,14 @@ func (c *EthereumClient) GetBlockNumberUint64(ctx context.Context) (uint64, erro
 
 func (c *EthereumClient) GetLatestBlock(ctx context.Context) (uint64, error) {
 	var rpcRequest *RPCRequest
-	if c.clientConfig.BlockType == BlockType_Latest {
-		rpcRequest = GetLatestBlockRequest(1)
-	} else {
+	switch c.clientConfig.BlockType {
+	case BlockType_Safe:
 		rpcRequest = GetSafeBlockRequest(1)
+	case BlockType_Finalized:
+		rpcRequest = GetFinalizedBlockRequest(1)
+	default:
+		rpcRequest = GetLatestBlockRequest(1)
 	}
-
 	res, err := c.Call(ctx, rpcRequest)
 	if err != nil {
 		return 0, err

@@ -124,6 +124,15 @@ func GetSafeBlockRequest(id uint) *RPCRequest {
 	}
 }
 
+func GetFinalizedBlockRequest(id uint) *RPCRequest {
+	return &RPCRequest{
+		JSONRPC: jsonRPCVersion,
+		Method:  RPCMethod_getBlockByNumber.RequestMethod.Name,
+		Params:  []interface{}{"finalized", true},
+		ID:      id,
+	}
+}
+
 func GetLatestBlockRequest(id uint) *RPCRequest {
 	return &RPCRequest{
 		JSONRPC: jsonRPCVersion,
