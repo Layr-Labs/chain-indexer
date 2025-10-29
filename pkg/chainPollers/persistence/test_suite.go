@@ -106,10 +106,10 @@ func (s *TestSuite) testChainPollingState(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, blockNum3, retrieved3.Number)
 
-	// Ensure original AVS on same chain is unchanged
-	retrieved, err = store.GetLastProcessedBlock(ctx, chainId)
+	// Ensure chain 2 is still unchanged
+	retrieved2, err = store.GetLastProcessedBlock(ctx, chainId2)
 	require.NoError(t, err)
-	assert.Equal(t, newBlockNum, retrieved.Number)
+	assert.Equal(t, blockNum2, retrieved2.Number)
 }
 
 func (s *TestSuite) testLifecycle(t *testing.T) {

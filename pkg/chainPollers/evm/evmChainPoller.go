@@ -9,11 +9,11 @@ import (
 	"time"
 
 	chainPoller "github.com/Layr-Labs/chain-indexer/pkg/chainPollers"
+	"github.com/Layr-Labs/chain-indexer/pkg/chainPollers/persistence"
 	"github.com/Layr-Labs/chain-indexer/pkg/clients/ethereum"
 	"github.com/Layr-Labs/chain-indexer/pkg/config"
 	"github.com/Layr-Labs/chain-indexer/pkg/contractStore"
 	"github.com/Layr-Labs/chain-indexer/pkg/transactionLogParser"
-	"github.com/ethereum/go-ethereum/signer/storage"
 	"go.uber.org/zap"
 )
 
@@ -403,7 +403,7 @@ func (ecp *EVMChainPoller) reconcileReorg(ctx context.Context, startBlock *ether
 		ecp.blockHandler.HandleReorgBlock(ctx, orphanedBlock.Number)
 
 		err = ecp.store.DeleteBlock(ctx, orphanedBlock.ChainId, orphanedBlock.Number)
-		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		if err != nil && !errors.Is(err, persistence.ErrNotFound) {
 			return fmt.Errorf("failed to delete orphaned block: %w", err)
 		}
 	}
@@ -431,7 +431,7 @@ func (ecp *EVMChainPoller) findOrphanedBlocks(ctx context.Context, startBlock *e
 
 		if err != nil || parentBlockRecord == nil {
 
-			if errors.Is(err, storage.ErrNotFound) {
+			if errors.Is(err, persistence.ErrNotFound) {
 				ecp.logger.Sugar().Debugw("Block not found in storage",
 					"blockNumber", parentBlockNum,
 					"error", err)
@@ -441,6 +441,12 @@ func (ecp *EVMChainPoller) findOrphanedBlocks(ctx context.Context, startBlock *e
 					ParentHash: canonParentBlock.ParentHash.Value(),
 					Timestamp:  canonParentBlock.Timestamp.Value(),
 					ChainId:    canonParentBlock.ChainId,
+				}
+				// Save the block from canonical chain to storage since it was missing
+				if saveErr := ecp.store.SaveBlock(ctx, parentBlockRecord); saveErr != nil {
+					ecp.logger.Sugar().Warnw("Failed to save missing block to storage",
+						"blockNumber", parentBlockNum,
+						"error", saveErr)
 				}
 			} else {
 				return nil, fmt.Errorf("failed to fetch block %d for : %w", parentBlockNum, err)

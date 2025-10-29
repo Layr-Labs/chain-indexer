@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	chainPoller "github.com/Layr-Labs/chain-indexer/pkg/chainPollers"
+	"github.com/Layr-Labs/chain-indexer/pkg/chainPollers/persistence"
 	"github.com/Layr-Labs/chain-indexer/pkg/chainPollers/persistence/memory"
 	"github.com/Layr-Labs/chain-indexer/pkg/clients/ethereum"
 	"github.com/Layr-Labs/chain-indexer/pkg/config"
 	"github.com/Layr-Labs/chain-indexer/pkg/mocks"
-	"github.com/ethereum/go-ethereum/signer/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -342,7 +342,6 @@ func TestReconcileReorg_Success_DeletesOrphanedBlocks(t *testing.T) {
 
 	ctx := context.Background()
 	mockClient := mocks.NewMockClient(t)
-	mockChainPollerPersistence := mocks.NewMockIChainPollerPersistence(t)
 	mockBlockHandler := mocks.NewMockIBlockHandler(t)
 	store := memory.NewInMemoryChainPollerPersistence()
 
@@ -397,11 +396,9 @@ func TestReconcileReorg_Success_DeletesOrphanedBlocks(t *testing.T) {
 	mockClient.EXPECT().GetBlockByNumber(ctx, uint64(98)).Return(chainBlock98, nil)
 	mockClient.EXPECT().GetBlockByNumber(ctx, uint64(97)).Return(chainBlock97, nil)
 
-	// Expect CancelBlock to be called for each orphaned block
-	mockChainPollerPersistence.EXPECT().DeleteBlock(ctx, config.ChainId(1), uint64(99))
-	mockChainPollerPersistence.EXPECT().DeleteBlock(ctx, config.ChainId(1), uint64(98))
-
-	mockBlockHandler.EXPECT().HandleReorgBlock(ctx, chainBlock98)
+	// Expect HandleReorgBlock to be called for each orphaned block
+	mockBlockHandler.EXPECT().HandleReorgBlock(ctx, uint64(99))
+	mockBlockHandler.EXPECT().HandleReorgBlock(ctx, uint64(98))
 
 	poller := &EVMChainPoller{
 		ethClient:    mockClient,
@@ -424,11 +421,11 @@ func TestReconcileReorg_Success_DeletesOrphanedBlocks(t *testing.T) {
 	// Verify orphaned blocks were deleted from storage
 	_, err = store.GetBlock(ctx, config.ChainId(1), 99)
 	assert.Error(t, err, "Block 99 should be deleted")
-	assert.True(t, errors.Is(err, storage.ErrNotFound))
+	assert.True(t, errors.Is(err, persistence.ErrNotFound))
 
 	_, err = store.GetBlock(ctx, config.ChainId(1), 98)
 	assert.Error(t, err, "Block 98 should be deleted")
-	assert.True(t, errors.Is(err, storage.ErrNotFound))
+	assert.True(t, errors.Is(err, persistence.ErrNotFound))
 
 	// Verify common ancestor block 97 still exists
 	block97, err := store.GetBlock(ctx, config.ChainId(1), 97)
