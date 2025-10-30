@@ -12,7 +12,6 @@ import (
 	"github.com/Layr-Labs/chain-indexer/pkg/chainPollers/persistence"
 	"github.com/Layr-Labs/chain-indexer/pkg/clients/ethereum"
 	"github.com/Layr-Labs/chain-indexer/pkg/config"
-	"github.com/Layr-Labs/chain-indexer/pkg/contractStore"
 	"github.com/Layr-Labs/chain-indexer/pkg/transactionLogParser"
 	"go.uber.org/zap"
 )
@@ -29,27 +28,31 @@ type EVMChainPollerConfig struct {
 }
 
 type EVMChainPoller struct {
-	ethClient     ethereum.Client
-	logParser     transactionLogParser.LogParser
-	config        *EVMChainPollerConfig
-	contractStore contractStore.IContractStore
-	logger        *zap.Logger
-	store         chainPoller.IChainPollerPersistence
-	blockHandler  chainPoller.IBlockHandler
+	ethClient    ethereum.Client
+	logParser    transactionLogParser.LogParser
+	config       *EVMChainPollerConfig
+	logger       *zap.Logger
+	store        chainPoller.IChainPollerPersistence
+	blockHandler chainPoller.IBlockHandler
 }
 
 func NewEVMChainPoller(
 	ethClient ethereum.Client,
 	logParser transactionLogParser.LogParser,
 	config *EVMChainPollerConfig,
-	contractStore contractStore.IContractStore,
 	store chainPoller.IChainPollerPersistence,
 	blockHandler chainPoller.IBlockHandler,
 	logger *zap.Logger,
-) *EVMChainPoller {
+) (*EVMChainPoller, error) {
 
 	if store == nil {
-		panic("store is required")
+		return nil, fmt.Errorf("chain poller store cannot be nil")
+	}
+	if blockHandler == nil {
+		return nil, fmt.Errorf("chain poller block handler cannot be nil")
+	}
+	if logParser == nil {
+		return nil, fmt.Errorf("chain poller log parser cannot be nil")
 	}
 
 	// Set default values for reorg configuration if not provided
@@ -70,14 +73,13 @@ func NewEVMChainPoller(
 		zap.Uint("chainId", uint(config.ChainId)),
 	)
 	return &EVMChainPoller{
-		ethClient:     ethClient,
-		logger:        pollerLogger,
-		logParser:     logParser,
-		config:        config,
-		contractStore: contractStore,
-		store:         store,
-		blockHandler:  blockHandler,
-	}
+		ethClient:    ethClient,
+		logger:       pollerLogger,
+		logParser:    logParser,
+		config:       config,
+		store:        store,
+		blockHandler: blockHandler,
+	}, nil
 }
 
 func (ecp *EVMChainPoller) Start(ctx context.Context) error {
@@ -285,8 +287,8 @@ func (ecp *EVMChainPoller) processBlockLogs(ctx context.Context, block *ethereum
 		if err := ecp.store.DeleteBlock(ctx, ecp.config.ChainId, oldBlockNum); err != nil {
 			ecp.logger.Sugar().Debugw("Failed to prune old block",
 				"blockNumber", oldBlockNum,
-				"error", err)
-			// TODO: non-fatal for now. Does run the (low) risk of orphaned storage usage growth
+				"error", err,
+			)
 		}
 	}
 
