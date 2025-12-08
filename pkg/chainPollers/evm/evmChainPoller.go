@@ -313,7 +313,7 @@ func (ecp *EVMChainPoller) fetchLogsForInterestingContractsForBlock(blockNumber 
 	defer cancel()
 
 	allContracts := ecp.listAllInterestingContracts()
-	ecp.logger.Sugar().Infow("Fetching logs for interesting contracts",
+	ecp.logger.Sugar().Debugw("Fetching logs for interesting contracts",
 		zap.Any("contracts", allContracts),
 	)
 	logResultsChan := make(chan []*ethereum.EthereumEventLog, len(allContracts))
@@ -382,7 +382,7 @@ func (ecp *EVMChainPoller) fetchLogsForInterestingContractsForBlock(blockNumber 
 		allLogs = append(allLogs, contractLogs...)
 	}
 
-	ecp.logger.Sugar().Infow("All logs fetched for contracts",
+	ecp.logger.Sugar().Debugw("All logs fetched for contracts",
 		zap.Uint64("blockNumber", blockNumber),
 		zap.Int("logCount", len(allLogs)),
 	)
