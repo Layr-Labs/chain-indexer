@@ -65,7 +65,7 @@ type Client interface {
 	GetLatestBlock(ctx context.Context) (uint64, error)
 	GetBlockByNumber(ctx context.Context, blockNumber uint64) (*EthereumBlock, error)
 	GetLogs(ctx context.Context, address string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error)
-	GetLogsBatch(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error)
+	GetLogsForAddresses(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error)
 }
 
 type EthereumClient struct {
@@ -298,12 +298,12 @@ func (c *EthereumClient) GetLogs(ctx context.Context, address string, fromBlock 
 	return logs, nil
 }
 
-func (c *EthereumClient) GetLogsBatch(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error) {
+func (c *EthereumClient) GetLogsForAddresses(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error) {
 	if len(addresses) == 0 {
 		return []*EthereumEventLog{}, nil
 	}
 
-	rpcRequest := GetBatchLogsRequest(addresses, fromBlock, toBlock, 1)
+	rpcRequest := GetLogsForAddressesRequest(addresses, fromBlock, toBlock, 1)
 
 	res, err := c.Call(ctx, rpcRequest)
 	if err != nil {

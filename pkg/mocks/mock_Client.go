@@ -246,11 +246,11 @@ func (_c *MockClient_GetLogs_Call) RunAndReturn(run func(ctx context.Context, ad
 	return _c
 }
 
-func (_mock *MockClient) GetLogsBatch(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*ethereum.EthereumEventLog, error) {
+func (_mock *MockClient) GetLogsForAddresses(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*ethereum.EthereumEventLog, error) {
 	ret := _mock.Called(ctx, addresses, fromBlock, toBlock)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetLogsBatch")
+		panic("no return value specified for GetLogsForAddresses")
 	}
 
 	var r0 []*ethereum.EthereumEventLog
@@ -273,15 +273,15 @@ func (_mock *MockClient) GetLogsBatch(ctx context.Context, addresses []string, f
 	return r0, r1
 }
 
-type MockClient_GetLogsBatch_Call struct {
+type MockClient_GetLogsForAddresses_Call struct {
 	*mock.Call
 }
 
-func (_e *MockClient_Expecter) GetLogsBatch(ctx interface{}, addresses interface{}, fromBlock interface{}, toBlock interface{}) *MockClient_GetLogsBatch_Call {
-	return &MockClient_GetLogsBatch_Call{Call: _e.mock.On("GetLogsBatch", ctx, addresses, fromBlock, toBlock)}
+func (_e *MockClient_Expecter) GetLogsForAddresses(ctx interface{}, addresses interface{}, fromBlock interface{}, toBlock interface{}) *MockClient_GetLogsForAddresses_Call {
+	return &MockClient_GetLogsForAddresses_Call{Call: _e.mock.On("GetLogsForAddresses", ctx, addresses, fromBlock, toBlock)}
 }
 
-func (_c *MockClient_GetLogsBatch_Call) Run(run func(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64)) *MockClient_GetLogsBatch_Call {
+func (_c *MockClient_GetLogsForAddresses_Call) Run(run func(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64)) *MockClient_GetLogsForAddresses_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -304,12 +304,12 @@ func (_c *MockClient_GetLogsBatch_Call) Run(run func(ctx context.Context, addres
 	return _c
 }
 
-func (_c *MockClient_GetLogsBatch_Call) Return(ethereumEventLogs []*ethereum.EthereumEventLog, err error) *MockClient_GetLogsBatch_Call {
+func (_c *MockClient_GetLogsForAddresses_Call) Return(ethereumEventLogs []*ethereum.EthereumEventLog, err error) *MockClient_GetLogsForAddresses_Call {
 	_c.Call.Return(ethereumEventLogs, err)
 	return _c
 }
 
-func (_c *MockClient_GetLogsBatch_Call) RunAndReturn(run func(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*ethereum.EthereumEventLog, error)) *MockClient_GetLogsBatch_Call {
+func (_c *MockClient_GetLogsForAddresses_Call) RunAndReturn(run func(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*ethereum.EthereumEventLog, error)) *MockClient_GetLogsForAddresses_Call {
 	_c.Call.Return(run)
 	return _c
 }

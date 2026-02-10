@@ -188,7 +188,7 @@ func GetLogsRequest(address string, fromBlock uint64, toBlock uint64, id uint) *
 	}
 }
 
-func GetBatchLogsRequest(addresses []string, fromBlock uint64, toBlock uint64, id uint) *RPCRequest {
+func GetLogsForAddressesRequest(addresses []string, fromBlock uint64, toBlock uint64, id uint) *RPCRequest {
 	hexFromBlock := hexutil.EncodeUint64(fromBlock)
 	hexToBlock := hexutil.EncodeUint64(toBlock)
 

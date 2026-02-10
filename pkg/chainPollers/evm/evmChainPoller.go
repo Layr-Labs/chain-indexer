@@ -44,12 +44,12 @@ type EVMChainPoller struct {
 	logger           *zap.Logger
 	store            chainPoller.IChainPollerPersistence
 	blockHandler     chainPoller.IBlockHandler
-	contractRegistry chainPoller.ContractRegistry
+	contractRegistry chainPoller.IContractRegistry
 }
 
 type EVMChainPollerOption func(*EVMChainPoller)
 
-func WithContractRegistry(r chainPoller.ContractRegistry) EVMChainPollerOption {
+func WithContractRegistry(r chainPoller.IContractRegistry) EVMChainPollerOption {
 	return func(ecp *EVMChainPoller) {
 		ecp.contractRegistry = r
 	}
@@ -320,7 +320,7 @@ func (ecp *EVMChainPoller) processBlockLogs(ctx context.Context, block *ethereum
 	return blockRecord, nil
 }
 
-func (ecp *EVMChainPoller) ContractRegistry() chainPoller.ContractRegistry {
+func (ecp *EVMChainPoller) ContractRegistry() chainPoller.IContractRegistry {
 	return ecp.contractRegistry
 }
 
@@ -394,7 +394,7 @@ func (ecp *EVMChainPoller) fetchLogsForInterestingContractsForBlock(blockNumber 
 				zap.Uint64("blockNumber", blockNumber),
 			)
 
-			logs, err := ecp.ethClient.GetLogsBatch(ctxWithTimeout, addrs, blockNumber, blockNumber)
+			logs, err := ecp.ethClient.GetLogsForAddresses(ctxWithTimeout, addrs, blockNumber, blockNumber)
 			if err != nil {
 				ecp.logger.Sugar().Errorw("Failed to fetch logs batch",
 					zap.Int("batchIdx", batchIdx),

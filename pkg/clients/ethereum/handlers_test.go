@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetBatchLogsRequest_MultipleAddresses(t *testing.T) {
-	req := GetBatchLogsRequest([]string{"0xA", "0xB", "0xC"}, 100, 200, 1)
+func TestGetLogsForAddressesRequest_MultipleAddresses(t *testing.T) {
+	req := GetLogsForAddressesRequest([]string{"0xA", "0xB", "0xC"}, 100, 200, 1)
 
 	assert.Equal(t, "eth_getLogs", req.Method)
 	assert.Equal(t, "2.0", req.JSONRPC)
@@ -33,8 +33,8 @@ func TestGetBatchLogsRequest_MultipleAddresses(t *testing.T) {
 	assert.Equal(t, "0xc8", filter["toBlock"])
 }
 
-func TestGetBatchLogsRequest_SingleAddress(t *testing.T) {
-	req := GetBatchLogsRequest([]string{"0xABC"}, 0, 0, 1)
+func TestGetLogsForAddressesRequest_SingleAddress(t *testing.T) {
+	req := GetLogsForAddressesRequest([]string{"0xABC"}, 0, 0, 1)
 
 	body, err := json.Marshal(req)
 	require.NoError(t, err)
@@ -67,8 +67,8 @@ func TestGetLogsRequest_SingleAddressString(t *testing.T) {
 	assert.Equal(t, "0xABC", addr)
 }
 
-func TestGetBatchLogsRequest_BlockRangeEncoding(t *testing.T) {
-	req := GetBatchLogsRequest([]string{"0x1"}, 255, 4096, 1)
+func TestGetLogsForAddressesRequest_BlockRangeEncoding(t *testing.T) {
+	req := GetLogsForAddressesRequest([]string{"0x1"}, 255, 4096, 1)
 
 	body, err := json.Marshal(req)
 	require.NoError(t, err)

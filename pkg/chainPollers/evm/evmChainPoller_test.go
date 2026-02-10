@@ -648,7 +648,7 @@ func TestFetchLogs_SingleBatch_UnderLimit(t *testing.T) {
 		{Address: ethereum.EthereumHexString("0xa"), LogIndex: ethereum.EthereumQuantity(0)},
 		{Address: ethereum.EthereumHexString("0xb"), LogIndex: ethereum.EthereumQuantity(1)},
 	}
-	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.MatchedBy(func(addrs []string) bool {
+	mockClient.EXPECT().GetLogsForAddresses(mock.Anything, mock.MatchedBy(func(addrs []string) bool {
 		return len(addrs) == 3
 	}), uint64(100), uint64(100)).Return(expectedLogs, nil)
 
@@ -664,7 +664,7 @@ func TestFetchLogs_BatchesByMaxAddresses(t *testing.T) {
 		[]string{"0xA", "0xB", "0xC", "0xD", "0xE"}, 2)
 
 	var callCount atomic.Int32
-	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.Anything, uint64(50), uint64(50)).
+	mockClient.EXPECT().GetLogsForAddresses(mock.Anything, mock.Anything, uint64(50), uint64(50)).
 		RunAndReturn(func(_ context.Context, addrs []string, _, _ uint64) ([]*ethereum.EthereumEventLog, error) {
 			callCount.Add(1)
 			logs := make([]*ethereum.EthereumEventLog, 0)
@@ -688,9 +688,9 @@ func TestFetchLogs_BatchError_FailsFast(t *testing.T) {
 	store := memory.NewInMemoryChainPollerPersistence()
 	poller := createTestPollerWithContracts(mockClient, store, nil, []string{"0xA", "0xB"}, 1)
 
-	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.Anything, uint64(10), uint64(10)).
+	mockClient.EXPECT().GetLogsForAddresses(mock.Anything, mock.Anything, uint64(10), uint64(10)).
 		Return(nil, fmt.Errorf("rpc error")).Maybe()
-	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.Anything, uint64(10), uint64(10)).
+	mockClient.EXPECT().GetLogsForAddresses(mock.Anything, mock.Anything, uint64(10), uint64(10)).
 		Return([]*ethereum.EthereumEventLog{}, nil).Maybe()
 
 	_, err := poller.fetchLogsForInterestingContractsForBlock(10)

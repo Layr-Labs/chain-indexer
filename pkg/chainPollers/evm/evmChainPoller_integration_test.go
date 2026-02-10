@@ -57,7 +57,7 @@ func newBaseClient(t *testing.T, rpcURL string) ethereum.Client {
 	}, l)
 }
 
-func TestIntegration_GetLogsBatch_BaseSepolia(t *testing.T) {
+func TestIntegration_GetLogsForAddresses_BaseSepolia(t *testing.T) {
 	rpcURL := skipIfNoRPC(t)
 	client := newBaseClient(t, rpcURL)
 
@@ -69,7 +69,7 @@ func TestIntegration_GetLogsBatch_BaseSepolia(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	logs, err := client.GetLogsBatch(ctx, addresses, integrationFromBlock, integrationToBlock)
+	logs, err := client.GetLogsForAddresses(ctx, addresses, integrationFromBlock, integrationToBlock)
 	require.NoError(t, err)
 	assert.NotNil(t, logs)
 
@@ -176,7 +176,7 @@ func TestIntegration_FactoryPattern_BaseSepolia(t *testing.T) {
 	defer cancel()
 
 	// Verify the pinned block still has the expected bridge events
-	bridgeLogs, err := client.GetLogsBatch(ctx, []string{l2StandardBridge}, factoryBlock, factoryBlock)
+	bridgeLogs, err := client.GetLogsForAddresses(ctx, []string{l2StandardBridge}, factoryBlock, factoryBlock)
 	require.NoError(t, err)
 	require.NotEmpty(t, bridgeLogs, "pinned block %d should have L2StandardBridge events", factoryBlock)
 	t.Logf("Pinned block %d has %d bridge events", factoryBlock, len(bridgeLogs))
@@ -224,7 +224,7 @@ func TestIntegration_FactoryPattern_BaseSepolia(t *testing.T) {
 		"adding the discovered child should return >= logs")
 
 	// Step 5: Cross-verify by fetching child logs directly
-	childLogsDirectly, err := client.GetLogsBatch(ctx, []string{factoryChildAddress}, factoryBlock, factoryBlock)
+	childLogsDirectly, err := client.GetLogsForAddresses(ctx, []string{factoryChildAddress}, factoryBlock, factoryBlock)
 	require.NoError(t, err)
 	t.Logf("Direct child-only fetch: %d logs at block %d", len(childLogsDirectly), factoryBlock)
 
