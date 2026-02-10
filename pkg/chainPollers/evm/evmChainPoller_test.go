@@ -34,7 +34,8 @@ func createTestPoller(
 			MaxReorgDepth:     10,
 			ReorgCheckEnabled: true,
 		},
-		logger: zap.NewNop(),
+		logger:           zap.NewNop(),
+		dynamicContracts: make(map[string]struct{}),
 	}
 }
 
@@ -486,4 +487,54 @@ func TestReconcileReorg_NoOrphanedBlocks_ReturnsError(t *testing.T) {
 	// Should return error when no orphaned blocks found
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no orphaned blocks found")
+}
+
+func TestAddInterestingContracts(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	mockBlockHandler := mocks.NewMockIBlockHandler(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+
+	poller := createTestPoller(mockClient, store, mockBlockHandler)
+	poller.config.InterestingContracts = []string{"0xaaa"}
+
+	poller.AddInterestingContracts("0xbbb", "0xccc")
+
+	contracts := poller.listAllInterestingContracts()
+	assert.Len(t, contracts, 3)
+	assert.Contains(t, contracts, "0xaaa")
+	assert.Contains(t, contracts, "0xbbb")
+	assert.Contains(t, contracts, "0xccc")
+}
+
+func TestAddInterestingContracts_Dedup(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	mockBlockHandler := mocks.NewMockIBlockHandler(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+
+	poller := createTestPoller(mockClient, store, mockBlockHandler)
+	poller.config.InterestingContracts = []string{"0xaaa", "0xbbb"}
+
+	// Add a duplicate of an existing static contract
+	poller.AddInterestingContracts("0xaaa")
+
+	contracts := poller.listAllInterestingContracts()
+	assert.Len(t, contracts, 2)
+	assert.Contains(t, contracts, "0xaaa")
+	assert.Contains(t, contracts, "0xbbb")
+}
+
+func TestAddInterestingContracts_CaseInsensitive(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	mockBlockHandler := mocks.NewMockIBlockHandler(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+
+	poller := createTestPoller(mockClient, store, mockBlockHandler)
+	poller.config.InterestingContracts = []string{"0xaaa"}
+
+	// Add same address with different casing
+	poller.AddInterestingContracts("0xAAA")
+
+	contracts := poller.listAllInterestingContracts()
+	assert.Len(t, contracts, 1)
+	assert.Contains(t, contracts, "0xaaa")
 }

@@ -188,3 +188,21 @@ func GetLogsRequest(address string, fromBlock uint64, toBlock uint64, id uint) *
 		ID:      id,
 	}
 }
+
+func GetLogsBatchRequest(addresses []string, fromBlock uint64, toBlock uint64, id uint) *RPCRequest {
+	hexFromBlock := hexutil.EncodeUint64(fromBlock)
+	hexToBlock := hexutil.EncodeUint64(toBlock)
+
+	filter := map[string]interface{}{
+		"address":   addresses,
+		"fromBlock": hexFromBlock,
+		"toBlock":   hexToBlock,
+	}
+
+	return &RPCRequest{
+		JSONRPC: jsonRPCVersion,
+		Method:  RPCMethod_getLogs.RequestMethod.Name,
+		Params:  []interface{}{filter},
+		ID:      id,
+	}
+}

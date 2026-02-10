@@ -36,6 +36,9 @@ type EVMChainPoller struct {
 	logger        *zap.Logger
 	store         chainPoller.IChainPollerPersistence
 	blockHandler  chainPoller.IBlockHandler
+
+	mu               sync.RWMutex
+	dynamicContracts map[string]struct{}
 }
 
 func NewEVMChainPoller(
@@ -70,13 +73,14 @@ func NewEVMChainPoller(
 		zap.Uint("chainId", uint(config.ChainId)),
 	)
 	return &EVMChainPoller{
-		ethClient:     ethClient,
-		logger:        pollerLogger,
-		logParser:     logParser,
-		config:        config,
-		contractStore: contractStore,
-		store:         store,
-		blockHandler:  blockHandler,
+		ethClient:        ethClient,
+		logger:           pollerLogger,
+		logParser:        logParser,
+		config:           config,
+		contractStore:    contractStore,
+		store:            store,
+		blockHandler:     blockHandler,
+		dynamicContracts: make(map[string]struct{}),
 	}
 }
 
@@ -293,94 +297,107 @@ func (ecp *EVMChainPoller) processBlockLogs(ctx context.Context, block *ethereum
 	return blockRecord, nil
 }
 
+func (ecp *EVMChainPoller) AddInterestingContracts(addresses ...string) {
+	ecp.mu.Lock()
+	defer ecp.mu.Unlock()
+	for _, addr := range addresses {
+		ecp.dynamicContracts[strings.ToLower(addr)] = struct{}{}
+	}
+}
+
 func (ecp *EVMChainPoller) listAllInterestingContracts() []string {
+	ecp.mu.RLock()
+	defer ecp.mu.RUnlock()
+
+	seen := make(map[string]struct{})
 	contracts := make([]string, 0)
-	for _, contract := range ecp.config.InterestingContracts {
-		if contract != "" {
-			contracts = append(contracts, strings.ToLower(contract))
+	for _, c := range ecp.config.InterestingContracts {
+		if c != "" {
+			addr := strings.ToLower(c)
+			if _, ok := seen[addr]; !ok {
+				seen[addr] = struct{}{}
+				contracts = append(contracts, addr)
+			}
+		}
+	}
+	for addr := range ecp.dynamicContracts {
+		if _, ok := seen[addr]; !ok {
+			seen[addr] = struct{}{}
+			contracts = append(contracts, addr)
 		}
 	}
 	return contracts
 }
 
-func (ecp *EVMChainPoller) fetchLogsForInterestingContractsForBlock(blockNumber uint64) ([]*ethereum.EthereumEventLog, error) {
-	var wg sync.WaitGroup
+const maxAddressesPerGetLogs = 1000
 
-	// TODO: make this configurable in the future
+func (ecp *EVMChainPoller) fetchLogsForInterestingContractsForBlock(blockNumber uint64) ([]*ethereum.EthereumEventLog, error) {
 	ctxWithTimeout, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	allContracts := ecp.listAllInterestingContracts()
+	if len(allContracts) == 0 {
+		return nil, nil
+	}
+
 	ecp.logger.Sugar().Infow("Fetching logs for interesting contracts",
+		zap.Uint64("blockNumber", blockNumber),
+		zap.Int("contractCount", len(allContracts)),
 		zap.Any("contracts", allContracts),
 	)
-	logResultsChan := make(chan []*ethereum.EthereumEventLog, len(allContracts))
-	errorsChan := make(chan error, len(allContracts))
 
-	for _, contract := range allContracts {
+	numBatches := (len(allContracts) + maxAddressesPerGetLogs - 1) / maxAddressesPerGetLogs
+	results := make([][]*ethereum.EthereumEventLog, numBatches)
+	errs := make([]error, numBatches)
+
+	var wg sync.WaitGroup
+	for i := 0; i < len(allContracts); i += maxAddressesPerGetLogs {
+		batchIdx := i / maxAddressesPerGetLogs
+		end := min(i+maxAddressesPerGetLogs, len(allContracts))
+		chunk := allContracts[i:end]
+
 		wg.Add(1)
-		go func(contract string, wg *sync.WaitGroup) {
+		go func(batchIdx int, chunk []string) {
 			defer wg.Done()
 
-			ecp.logger.Sugar().Debugw("Fetching logs for contract",
-				zap.String("contract", contract),
+			ecp.logger.Sugar().Debugw("Fetching logs for contract batch",
 				zap.Uint64("blockNumber", blockNumber),
+				zap.Int("batchIndex", batchIdx),
+				zap.Int("batchSize", len(chunk)),
 			)
 
-			logs, err := ecp.ethClient.GetLogs(ctxWithTimeout, contract, blockNumber, blockNumber)
+			logs, err := ecp.ethClient.GetLogsBatch(ctxWithTimeout, chunk, blockNumber, blockNumber)
 			if err != nil {
-				ecp.logger.Sugar().Errorw("Failed to fetch logs for contract",
-					zap.String("contract", contract),
+				ecp.logger.Sugar().Errorw("Failed to fetch logs for contract batch",
 					zap.Uint64("blockNumber", blockNumber),
+					zap.Int("batchIndex", batchIdx),
+					zap.Any("contracts", chunk),
 					zap.Error(err),
 				)
-				errorsChan <- fmt.Errorf("failed to fetch logs for contract %s: %w", contract, err)
+				errs[batchIdx] = fmt.Errorf("failed to fetch logs for batch %d: %w", batchIdx, err)
 				return
 			}
-
-			if len(logs) == 0 {
-				ecp.logger.Sugar().Debugw("No logs found for contract",
-					zap.String("contract", contract),
-					zap.Uint64("blockNumber", blockNumber),
-				)
-				logResultsChan <- []*ethereum.EthereumEventLog{}
-				return
-			}
-
-			ecp.logger.Sugar().Infow("Fetched logs for contract",
-				zap.String("contract", contract),
-				zap.Uint64("blockNumber", blockNumber),
-				zap.Int("logCount", len(logs)),
-			)
-
-			logResultsChan <- logs
-
-		}(contract, &wg)
+			results[batchIdx] = logs
+		}(batchIdx, chunk)
 	}
-
 	wg.Wait()
-	close(logResultsChan)
-	close(errorsChan)
 
-	ecp.logger.Sugar().Debugw("All logs fetched for contracts",
-		zap.Uint64("blockNumber", blockNumber),
-	)
-
-	allErrors := make([]error, 0)
-	for err := range errorsChan {
-		allErrors = append(allErrors, err)
+	var batchErrors []error
+	for _, err := range errs {
+		if err != nil {
+			batchErrors = append(batchErrors, err)
+		}
+	}
+	if len(batchErrors) > 0 {
+		return nil, fmt.Errorf("failed to fetch logs: %v", batchErrors)
 	}
 
-	if len(allErrors) > 0 {
-		return nil, fmt.Errorf("failed to fetch logs for contracts: %v", allErrors)
+	var allLogs []*ethereum.EthereumEventLog
+	for _, logs := range results {
+		allLogs = append(allLogs, logs...)
 	}
 
-	allLogs := make([]*ethereum.EthereumEventLog, 0)
-	for contractLogs := range logResultsChan {
-		allLogs = append(allLogs, contractLogs...)
-	}
-
-	ecp.logger.Sugar().Infow("All logs fetched for contracts",
+	ecp.logger.Sugar().Infow("All logs fetched for block",
 		zap.Uint64("blockNumber", blockNumber),
 		zap.Int("logCount", len(allLogs)),
 	)
