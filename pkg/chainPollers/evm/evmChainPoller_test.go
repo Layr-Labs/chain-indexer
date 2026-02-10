@@ -4,38 +4,82 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	chainPoller "github.com/Layr-Labs/chain-indexer/pkg/chainPollers"
+	"github.com/Layr-Labs/chain-indexer/pkg/chainPollers/contractRegistry"
 	"github.com/Layr-Labs/chain-indexer/pkg/chainPollers/persistence"
 	"github.com/Layr-Labs/chain-indexer/pkg/chainPollers/persistence/memory"
 	"github.com/Layr-Labs/chain-indexer/pkg/clients/ethereum"
 	"github.com/Layr-Labs/chain-indexer/pkg/config"
 	"github.com/Layr-Labs/chain-indexer/pkg/mocks"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	"go.uber.org/zap"
 )
 
-// Test helper to create a test poller
 func createTestPoller(
 	ethClient ethereum.Client,
 	store chainPoller.IChainPollerPersistence,
 	blockHandler chainPoller.IBlockHandler,
+	opts ...EVMChainPollerOption,
 ) *EVMChainPoller {
-	return &EVMChainPoller{
+	ecp := &EVMChainPoller{
 		ethClient:    ethClient,
 		store:        store,
 		blockHandler: blockHandler,
 		config: &EVMChainPollerConfig{
-			AvsAddress:        "0xtest",
-			ChainId:           config.ChainId(1),
-			MaxReorgDepth:     10,
-			ReorgCheckEnabled: true,
+			AvsAddress:                 "0xtest",
+			ChainId:                    config.ChainId(1),
+			MaxReorgDepth:              10,
+			ReorgCheckEnabled:          true,
+			MaxAddressesPerLogsRequest: DefaultMaxAddressesPerLogsRequest,
+			LogsFetchTimeout:           DefaultLogsFetchTimeout,
 		},
 		logger: zap.NewNop(),
 	}
+	for _, opt := range opts {
+		opt(ecp)
+	}
+	return ecp
+}
+
+func createTestPollerWithContracts(
+	ethClient ethereum.Client,
+	store chainPoller.IChainPollerPersistence,
+	blockHandler chainPoller.IBlockHandler,
+	staticContracts []string,
+	maxAddrsPerReq int,
+	opts ...EVMChainPollerOption,
+) *EVMChainPoller {
+	if maxAddrsPerReq == 0 {
+		maxAddrsPerReq = DefaultMaxAddressesPerLogsRequest
+	}
+	ecp := &EVMChainPoller{
+		ethClient:    ethClient,
+		store:        store,
+		blockHandler: blockHandler,
+		config: &EVMChainPollerConfig{
+			AvsAddress:                 "0xtest",
+			ChainId:                    config.ChainId(1),
+			MaxReorgDepth:              10,
+			ReorgCheckEnabled:          true,
+			InterestingContracts:       staticContracts,
+			MaxAddressesPerLogsRequest: maxAddrsPerReq,
+			LogsFetchTimeout:           10 * time.Second,
+		},
+		logger: zap.NewNop(),
+	}
+	for _, opt := range opts {
+		opt(ecp)
+	}
+	return ecp
 }
 
 // Test Scenario 1: No reorg - all blocks match
@@ -433,7 +477,6 @@ func TestReconcileReorg_Success_DeletesOrphanedBlocks(t *testing.T) {
 	assert.Equal(t, "0x97", block97.Hash)
 }
 
-// Test reconcileReorg returns error when no orphaned blocks are found
 func TestReconcileReorg_NoOrphanedBlocks_ReturnsError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -443,7 +486,6 @@ func TestReconcileReorg_NoOrphanedBlocks_ReturnsError(t *testing.T) {
 	mockBlockHandler := mocks.NewMockIBlockHandler(t)
 	store := memory.NewInMemoryChainPollerPersistence()
 
-	// Setup: Save block 99 that matches chain (no reorg)
 	err := store.SaveBlock(ctx, &chainPoller.BlockRecord{
 		Number:     99,
 		Hash:       "0x99",
@@ -459,7 +501,6 @@ func TestReconcileReorg_NoOrphanedBlocks_ReturnsError(t *testing.T) {
 		ChainId:    config.ChainId(1),
 	}
 
-	// Mock chain returns matching block (no reorg)
 	chainBlock99 := &ethereum.EthereumBlock{
 		Number:     ethereum.EthereumQuantity(99),
 		Hash:       ethereum.EthereumHexString("0x99"),
@@ -468,22 +509,230 @@ func TestReconcileReorg_NoOrphanedBlocks_ReturnsError(t *testing.T) {
 	}
 	mockClient.EXPECT().GetBlockByNumber(ctx, uint64(99)).Return(chainBlock99, nil)
 
-	poller := &EVMChainPoller{
-		ethClient:    mockClient,
-		store:        store,
-		blockHandler: mockBlockHandler,
-		config: &EVMChainPollerConfig{
-			AvsAddress:    "0xtest",
-			ChainId:       config.ChainId(1),
-			MaxReorgDepth: 10,
-		},
-		logger: zap.NewNop(),
-	}
+	poller := createTestPoller(mockClient, store, mockBlockHandler)
 
-	// Execute reconcileReorg
 	err = poller.reconcileReorg(ctx, startBlock)
 
-	// Should return error when no orphaned blocks found
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no orphaned blocks found")
+}
+
+func TestRegisterContracts_AddsToList(t *testing.T) {
+	registry := contractRegistry.NewInMemoryContractRegistry()
+	registry.RegisterContracts([]string{"0xAAA", "0xBBB", "0xCCC"})
+
+	got := registry.ListContracts()
+	sort.Strings(got)
+	assert.Equal(t, []string{"0xaaa", "0xbbb", "0xccc"}, got)
+}
+
+func TestRegisterContracts_Deduplication(t *testing.T) {
+	registry := contractRegistry.NewInMemoryContractRegistry()
+	registry.RegisterContracts([]string{"0xAAA", "0xaaa"})
+
+	got := registry.ListContracts()
+	assert.Len(t, got, 1)
+	assert.Equal(t, "0xaaa", got[0])
+}
+
+func TestUnregisterContracts_RemovesFromList(t *testing.T) {
+	registry := contractRegistry.NewInMemoryContractRegistry()
+	registry.RegisterContracts([]string{"0xAAA", "0xBBB", "0xCCC"})
+	registry.UnregisterContracts([]string{"0xbbb"})
+
+	got := registry.ListContracts()
+	sort.Strings(got)
+	assert.Equal(t, []string{"0xaaa", "0xccc"}, got)
+}
+
+func TestUnregisterContracts_NonExistent_NoError(t *testing.T) {
+	registry := contractRegistry.NewInMemoryContractRegistry()
+	registry.RegisterContracts([]string{"0xAAA"})
+	registry.UnregisterContracts([]string{"0xZZZ"})
+
+	got := registry.ListContracts()
+	assert.Len(t, got, 1)
+	assert.Equal(t, "0xaaa", got[0])
+}
+
+func TestListAllInterestingContracts_MergesStaticAndDynamic(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	registry := contractRegistry.NewInMemoryContractRegistry()
+	poller := createTestPollerWithContracts(mockClient, store, nil, []string{"0xSTATIC"}, 0, WithContractRegistry(registry))
+
+	registry.RegisterContracts([]string{"0xDYNAMIC"})
+
+	got := poller.listAllInterestingContracts()
+	sort.Strings(got)
+	assert.Equal(t, []string{"0xdynamic", "0xstatic"}, got)
+}
+
+func TestListAllInterestingContracts_DedupsStaticAndDynamic(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	registry := contractRegistry.NewInMemoryContractRegistry()
+	poller := createTestPollerWithContracts(mockClient, store, nil, []string{"0xAAA"}, 0, WithContractRegistry(registry))
+
+	registry.RegisterContracts([]string{"0xaaa"})
+
+	got := poller.listAllInterestingContracts()
+	assert.Len(t, got, 1)
+	assert.Equal(t, "0xaaa", got[0])
+}
+
+func TestListAllInterestingContracts_NoRegistry_OnlyStatic(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	poller := createTestPollerWithContracts(mockClient, store, nil, []string{"0xSTATIC"}, 0)
+
+	got := poller.listAllInterestingContracts()
+	assert.Equal(t, []string{"0xstatic"}, got)
+	assert.Nil(t, poller.ContractRegistry())
+}
+
+func TestConcurrentRegisterDuringPolling(t *testing.T) {
+	registry := contractRegistry.NewInMemoryContractRegistry()
+	poller := createTestPoller(nil, memory.NewInMemoryChainPollerPersistence(), nil, WithContractRegistry(registry))
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(2)
+		go func(idx int) {
+			defer wg.Done()
+			registry.RegisterContracts([]string{fmt.Sprintf("0x%d", idx)})
+		}(i)
+		go func() {
+			defer wg.Done()
+			_ = poller.listAllInterestingContracts()
+		}()
+	}
+	wg.Wait()
+
+	got := registry.ListContracts()
+	assert.Len(t, got, 10)
+}
+
+func TestChunkAddresses(t *testing.T) {
+	t.Run("exact split", func(t *testing.T) {
+		addrs := []string{"a", "b", "c", "d"}
+		chunks := chunkAddresses(addrs, 2)
+		assert.Len(t, chunks, 2)
+		assert.Equal(t, []string{"a", "b"}, chunks[0])
+		assert.Equal(t, []string{"c", "d"}, chunks[1])
+	})
+	t.Run("remainder", func(t *testing.T) {
+		addrs := []string{"a", "b", "c", "d", "e"}
+		chunks := chunkAddresses(addrs, 2)
+		assert.Len(t, chunks, 3)
+		assert.Equal(t, []string{"e"}, chunks[2])
+	})
+	t.Run("single chunk", func(t *testing.T) {
+		addrs := []string{"a", "b"}
+		chunks := chunkAddresses(addrs, 1000)
+		assert.Len(t, chunks, 1)
+		assert.Equal(t, []string{"a", "b"}, chunks[0])
+	})
+	t.Run("empty", func(t *testing.T) {
+		chunks := chunkAddresses([]string{}, 100)
+		assert.Len(t, chunks, 0)
+	})
+}
+
+func TestFetchLogs_SingleBatch_UnderLimit(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	poller := createTestPollerWithContracts(mockClient, store, nil, []string{"0xA", "0xB", "0xC"}, 1000)
+
+	expectedLogs := []*ethereum.EthereumEventLog{
+		{Address: ethereum.EthereumHexString("0xa"), LogIndex: ethereum.EthereumQuantity(0)},
+		{Address: ethereum.EthereumHexString("0xb"), LogIndex: ethereum.EthereumQuantity(1)},
+	}
+	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.MatchedBy(func(addrs []string) bool {
+		return len(addrs) == 3
+	}), uint64(100), uint64(100)).Return(expectedLogs, nil)
+
+	logs, err := poller.fetchLogsForInterestingContractsForBlock(100)
+	require.NoError(t, err)
+	assert.Len(t, logs, 2)
+}
+
+func TestFetchLogs_BatchesByMaxAddresses(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	poller := createTestPollerWithContracts(mockClient, store, nil,
+		[]string{"0xA", "0xB", "0xC", "0xD", "0xE"}, 2)
+
+	var callCount atomic.Int32
+	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.Anything, uint64(50), uint64(50)).
+		RunAndReturn(func(_ context.Context, addrs []string, _, _ uint64) ([]*ethereum.EthereumEventLog, error) {
+			callCount.Add(1)
+			logs := make([]*ethereum.EthereumEventLog, 0)
+			for i, addr := range addrs {
+				logs = append(logs, &ethereum.EthereumEventLog{
+					Address:  ethereum.EthereumHexString(addr),
+					LogIndex: ethereum.EthereumQuantity(i),
+				})
+			}
+			return logs, nil
+		}).Times(3)
+
+	logs, err := poller.fetchLogsForInterestingContractsForBlock(50)
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), callCount.Load())
+	assert.Len(t, logs, 5)
+}
+
+func TestFetchLogs_BatchError_FailsFast(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	poller := createTestPollerWithContracts(mockClient, store, nil, []string{"0xA", "0xB"}, 1)
+
+	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.Anything, uint64(10), uint64(10)).
+		Return(nil, fmt.Errorf("rpc error")).Maybe()
+	mockClient.EXPECT().GetLogsBatch(mock.Anything, mock.Anything, uint64(10), uint64(10)).
+		Return([]*ethereum.EthereumEventLog{}, nil).Maybe()
+
+	_, err := poller.fetchLogsForInterestingContractsForBlock(10)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to fetch logs")
+}
+
+func TestFetchLogs_EmptyContracts_NoRPCCall(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	poller := createTestPollerWithContracts(mockClient, store, nil, []string{}, 1000)
+
+	logs, err := poller.fetchLogsForInterestingContractsForBlock(100)
+	require.NoError(t, err)
+	assert.Empty(t, logs)
+}
+
+func TestNewEVMChainPoller_DefaultConfig(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	mockBlockHandler := mocks.NewMockIBlockHandler(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+
+	poller := NewEVMChainPoller(mockClient, nil, &EVMChainPollerConfig{
+		ChainId: config.ChainId(1),
+	}, nil, store, mockBlockHandler, zap.NewNop())
+
+	assert.Equal(t, DefaultMaxAddressesPerLogsRequest, poller.config.MaxAddressesPerLogsRequest)
+	assert.Equal(t, DefaultLogsFetchTimeout, poller.config.LogsFetchTimeout)
+	assert.Nil(t, poller.ContractRegistry())
+}
+
+func TestNewEVMChainPoller_WithContractRegistry(t *testing.T) {
+	mockClient := mocks.NewMockClient(t)
+	mockBlockHandler := mocks.NewMockIBlockHandler(t)
+	store := memory.NewInMemoryChainPollerPersistence()
+	registry := contractRegistry.NewInMemoryContractRegistry()
+
+	poller := NewEVMChainPoller(mockClient, nil, &EVMChainPollerConfig{
+		ChainId: config.ChainId(1),
+	}, nil, store, mockBlockHandler, zap.NewNop(), WithContractRegistry(registry))
+
+	assert.NotNil(t, poller.ContractRegistry())
+	registry.RegisterContracts([]string{"0xABC"})
+	assert.Equal(t, []string{"0xabc"}, poller.ContractRegistry().ListContracts())
 }

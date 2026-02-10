@@ -65,6 +65,7 @@ type Client interface {
 	GetLatestBlock(ctx context.Context) (uint64, error)
 	GetBlockByNumber(ctx context.Context, blockNumber uint64) (*EthereumBlock, error)
 	GetLogs(ctx context.Context, address string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error)
+	GetLogsBatch(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error)
 }
 
 type EthereumClient struct {
@@ -281,6 +282,28 @@ func (c *EthereumClient) GetBlockTransactionReceipts(ctx context.Context, blockN
 
 func (c *EthereumClient) GetLogs(ctx context.Context, address string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error) {
 	rpcRequest := GetLogsRequest(address, fromBlock, toBlock, 1)
+
+	res, err := c.Call(ctx, rpcRequest)
+	if err != nil {
+		return nil, err
+	}
+	logs, err := RPCMethod_getLogs.ResponseParser(res.Result)
+	if err != nil {
+		c.Logger.Sugar().Errorw("failed to parse logs",
+			zap.Error(err),
+			zap.Any("raw response", res.Result),
+		)
+		return nil, err
+	}
+	return logs, nil
+}
+
+func (c *EthereumClient) GetLogsBatch(ctx context.Context, addresses []string, fromBlock uint64, toBlock uint64) ([]*EthereumEventLog, error) {
+	if len(addresses) == 0 {
+		return []*EthereumEventLog{}, nil
+	}
+
+	rpcRequest := GetBatchLogsRequest(addresses, fromBlock, toBlock, 1)
 
 	res, err := c.Call(ctx, rpcRequest)
 	if err != nil {

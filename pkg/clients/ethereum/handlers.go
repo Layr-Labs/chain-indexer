@@ -84,7 +84,7 @@ var (
 	RPCMethod_getLogs = &RequestResponseHandler[[]*EthereumEventLog]{
 		RequestMethod: &RequestMethod{
 			Name:    "eth_getLogs",
-			Timeout: time.Second * 5,
+			Timeout: time.Second * 30,
 		},
 		ResponseParser: func(res json.RawMessage) ([]*EthereumEventLog, error) {
 			logs := []*EthereumEventLog{}
@@ -174,9 +174,26 @@ func GetLogsRequest(address string, fromBlock uint64, toBlock uint64, id uint) *
 	hexFromBlock := hexutil.EncodeUint64(fromBlock)
 	hexToBlock := hexutil.EncodeUint64(toBlock)
 
-	// Create a filter object as expected by eth_getLogs
 	filter := map[string]interface{}{
 		"address":   address,
+		"fromBlock": hexFromBlock,
+		"toBlock":   hexToBlock,
+	}
+
+	return &RPCRequest{
+		JSONRPC: jsonRPCVersion,
+		Method:  RPCMethod_getLogs.RequestMethod.Name,
+		Params:  []interface{}{filter},
+		ID:      id,
+	}
+}
+
+func GetBatchLogsRequest(addresses []string, fromBlock uint64, toBlock uint64, id uint) *RPCRequest {
+	hexFromBlock := hexutil.EncodeUint64(fromBlock)
+	hexToBlock := hexutil.EncodeUint64(toBlock)
+
+	filter := map[string]interface{}{
+		"address":   addresses,
 		"fromBlock": hexFromBlock,
 		"toBlock":   hexToBlock,
 	}
