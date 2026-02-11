@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/Layr-Labs/chain-indexer/pkg/config"
 	"github.com/Layr-Labs/chain-indexer/pkg/contracts"
@@ -12,6 +13,7 @@ import (
 )
 
 type InMemoryContractStore struct {
+	mu        sync.RWMutex
 	contracts []*contracts.Contract
 	logger    *zap.Logger
 }
@@ -24,6 +26,9 @@ func NewInMemoryContractStore(contracts []*contracts.Contract, logger *zap.Logge
 }
 
 func (ics *InMemoryContractStore) GetContractByNameForChainId(name string, chainId config.ChainId) (*contracts.Contract, error) {
+	ics.mu.RLock()
+	defer ics.mu.RUnlock()
+
 	foundContract := util.Find(ics.contracts, func(c *contracts.Contract) bool {
 		return strings.EqualFold(c.Name, name) && c.ChainId == chainId
 	})
@@ -34,14 +39,14 @@ func (ics *InMemoryContractStore) GetContractByNameForChainId(name string, chain
 	return foundContract, nil
 }
 
-// TODO(seanmcgary): take a chain ID as an argument to increase specificity
 func (ics *InMemoryContractStore) GetContractByAddress(address string) (*contracts.Contract, error) {
-	address = strings.ToLower(address)
+	ics.mu.RLock()
+	defer ics.mu.RUnlock()
 
+	address = strings.ToLower(address)
 	contract := util.Find(ics.contracts, func(c *contracts.Contract) bool {
 		return strings.EqualFold(c.Address, address)
 	})
-
 	if contract == nil {
 		ics.logger.Error("Contract not found", zap.String("address", address))
 		return nil, nil
@@ -50,7 +55,9 @@ func (ics *InMemoryContractStore) GetContractByAddress(address string) (*contrac
 }
 
 func (ics *InMemoryContractStore) ListContractAddressesForChain(chainId config.ChainId) []string {
-	// use a map to make sure we're getting unique addresses and no duplicates
+	ics.mu.RLock()
+	defer ics.mu.RUnlock()
+
 	chainContracts := util.Reduce(ics.contracts, func(acc map[string]*contracts.Contract, c *contracts.Contract) map[string]*contracts.Contract {
 		if c.ChainId == chainId {
 			acc[strings.ToLower(c.Address)] = c
@@ -65,6 +72,9 @@ func (ics *InMemoryContractStore) ListContractAddressesForChain(chainId config.C
 }
 
 func (ics *InMemoryContractStore) OverrideContract(contractName string, chainIds []config.ChainId, contract *contracts.Contract) error {
+	ics.mu.Lock()
+	defer ics.mu.Unlock()
+
 	found := false
 	for i, origContract := range ics.contracts {
 		if origContract.Name == contractName && (len(chainIds) == 0 || slices.Contains(chainIds, origContract.ChainId)) {
@@ -96,11 +106,29 @@ func (ics *InMemoryContractStore) OverrideContract(contractName string, chainIds
 				AbiVersions: contract.AbiVersions,
 			})
 		}
-
 	}
 	return nil
 }
 
+func (ics *InMemoryContractStore) AddContract(contract *contracts.Contract) error {
+	ics.mu.Lock()
+	defer ics.mu.Unlock()
+
+	addr := strings.ToLower(contract.Address)
+	for _, c := range ics.contracts {
+		if strings.EqualFold(c.Address, addr) && c.ChainId == contract.ChainId {
+			return fmt.Errorf("contract already exists: address=%s, chainId=%d", addr, contract.ChainId)
+		}
+	}
+	ics.contracts = append(ics.contracts, contract)
+	return nil
+}
+
 func (ics *InMemoryContractStore) ListContracts() []*contracts.Contract {
-	return ics.contracts
+	ics.mu.RLock()
+	defer ics.mu.RUnlock()
+
+	out := make([]*contracts.Contract, len(ics.contracts))
+	copy(out, ics.contracts)
+	return out
 }

@@ -11,4 +11,5 @@ type IContractStore interface {
 	ListContractAddressesForChain(chainId config.ChainId) []string
 	ListContracts() []*contracts.Contract
 	OverrideContract(contractName string, chainIds []config.ChainId, contract *contracts.Contract) error
+	AddContract(contract *contracts.Contract) error
 }
