@@ -119,15 +119,25 @@ func (ecp *EVMChainPoller) Start(ctx context.Context) error {
 	lastBlockRecord, err := ecp.store.GetLastProcessedBlock(ctx, ecp.config.ChainId)
 
 	if err != nil {
-		startBlockNum := ecp.config.GenesisBlockNumber
-
-		ecp.logger.Sugar().Infow("Poller could not get last processed block, starting from genesis block",
-			zap.Uint64("genesisBlockNumber", startBlockNum),
-		)
+		var startBlockNum uint64
+		if ecp.config.GenesisBlockNumber > 0 {
+			startBlockNum = ecp.config.GenesisBlockNumber
+			ecp.logger.Sugar().Infow("Poller could not get last processed block, starting from genesis block",
+				zap.Uint64("genesisBlockNumber", startBlockNum),
+			)
+		} else {
+			startBlockNum, err = ecp.ethClient.GetLatestBlock(ctx)
+			if err != nil {
+				return fmt.Errorf("error getting latest block: %w", err)
+			}
+			ecp.logger.Sugar().Infow("Poller could not get last processed block, starting from latest block",
+				zap.Uint64("latestBlock", startBlockNum),
+			)
+		}
 
 		lastCanonBlock, err := ecp.ethClient.GetBlockByNumber(ctx, startBlockNum)
 		if err != nil {
-			return fmt.Errorf("couldn't get genesis block %d: %w", startBlockNum, err)
+			return fmt.Errorf("couldn't get block %d: %w", startBlockNum, err)
 		}
 
 		lastBlockRecord = &chainPoller.BlockRecord{
