@@ -28,6 +28,8 @@ type EVMChainPollerConfig struct {
 	InterestingContracts []string
 	AvsAddress           string
 
+	GenesisBlockNumber uint64
+
 	MaxReorgDepth     int
 	BlockHistorySize  int
 	ReorgCheckEnabled bool
@@ -117,15 +119,15 @@ func (ecp *EVMChainPoller) Start(ctx context.Context) error {
 	lastBlockRecord, err := ecp.store.GetLastProcessedBlock(ctx, ecp.config.ChainId)
 
 	if err != nil {
-		ecp.logger.Sugar().Infow("Poller could not get last processed block so using latest block")
-		block, err := ecp.ethClient.GetLatestBlock(ctx)
-		if err != nil {
-			return fmt.Errorf("error getting latest block: %w", err)
-		}
+		startBlockNum := ecp.config.GenesisBlockNumber
 
-		lastCanonBlock, err := ecp.ethClient.GetBlockByNumber(ctx, block)
+		ecp.logger.Sugar().Infow("Poller could not get last processed block, starting from genesis block",
+			zap.Uint64("genesisBlockNumber", startBlockNum),
+		)
+
+		lastCanonBlock, err := ecp.ethClient.GetBlockByNumber(ctx, startBlockNum)
 		if err != nil {
-			return fmt.Errorf("couldn't get last canonical block: %w", err)
+			return fmt.Errorf("couldn't get genesis block %d: %w", startBlockNum, err)
 		}
 
 		lastBlockRecord = &chainPoller.BlockRecord{
